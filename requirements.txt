@@ -1,0 +1,8 @@
+pandas
+numpy
+networkx
+Faker
+fastapi
+uvicorn
+scikit-learn
+scipy
