@@ -16,17 +16,17 @@ fake = Faker('en_IN')
 
 # Define hotspots (Latitude, Longitude) with weights to create Major vs Minor hubs
 HOTSPOTS = [
-    # MAJOR HUBS (Huge density)
-    {"coords": (23.9583, 86.8142), "weight": 0.35}, # Jamtara, Jharkhand
-    {"coords": (28.1130, 77.0102), "weight": 0.20}, # Nuh/Mewat, Haryana
+    # Flattened weights so Jamtara doesn't overpower Nuh and others
+    {"coords": (23.9583, 86.8142), "weight": 0.15}, # Jamtara, Jharkhand
+    {"coords": (28.1130, 77.0102), "weight": 0.15}, # Nuh/Mewat, Haryana
     {"coords": (28.5355, 77.3910), "weight": 0.15}, # Noida, Delhi NCR
-    {"coords": (24.1950, 86.3021), "weight": 0.10}, # Deoghar, Jharkhand
+    {"coords": (24.1950, 86.3021), "weight": 0.15}, # Deoghar, Jharkhand
     
     # MINOR HUBS (Spread out across India)
-    {"coords": (30.9009, 75.8572), "weight": 0.05}, # Ludhiana, Punjab
-    {"coords": (19.0760, 72.8777), "weight": 0.05}, # Mumbai, Maharashtra
-    {"coords": (13.0826, 80.2707), "weight": 0.05}, # Chennai, Tamil Nadu
-    {"coords": (22.5726, 88.3638), "weight": 0.05}  # Kolkata, West Bengal
+    {"coords": (30.9009, 75.8572), "weight": 0.10}, # Ludhiana, Punjab
+    {"coords": (19.0760, 72.8777), "weight": 0.10}, # Mumbai, Maharashtra
+    {"coords": (13.0826, 80.2707), "weight": 0.10}, # Chennai, Tamil Nadu
+    {"coords": (22.5726, 88.3638), "weight": 0.10}  # Kolkata, West Bengal
 ]
 
 class SyntheticDataGenerator:
@@ -48,6 +48,12 @@ class SyntheticDataGenerator:
         
         # Pre-generate random, hashed-looking account numbers for all mules
         self.mule_accounts = {i: fake.sha256()[:16] for i in range(self.num_mules)}
+        
+        # Assign a specific hotspot to each mule based on weights
+        self.mule_hotspots = {}
+        weights = [h["weight"] for h in HOTSPOTS]
+        for i in range(self.num_mules):
+            self.mule_hotspots[i] = random.choices(HOTSPOTS, weights=weights, k=1)[0]["coords"]
         
         self.states = [
             "Maharashtra", "Karnataka", "Delhi", "Uttar Pradesh", "Telangana",
@@ -112,13 +118,12 @@ class SyntheticDataGenerator:
         self.complaints_df = pd.DataFrame(complaints)
         return self.complaints_df
 
-    def _get_hotspot_location(self):
+    def _get_hotspot_location(self, mule_id):
         """
         Spatial Point Processes (GMM): 
-        Samples coordinates using a Gaussian distribution around known real-world hotspots.
+        Samples coordinates using a Gaussian distribution around the mule's assigned regional hotspot.
         """
-        weights = [h["weight"] for h in HOTSPOTS]
-        hotspot = random.choices(HOTSPOTS, weights=weights, k=1)[0]["coords"]
+        hotspot = self.mule_hotspots[mule_id]
         lat_offset = np.random.normal(0, 0.05) # approx 5km variance
         lon_offset = np.random.normal(0, 0.05)
         return round(hotspot[0] + lat_offset, 6), round(hotspot[1] + lon_offset, 6)
@@ -155,7 +160,7 @@ class SyntheticDataGenerator:
                     # Delay before cashout (Exponential distribution, avg 30 mins)
                     cashout_delay_mins = np.random.exponential(scale=30)
                     cashout_time = curr_time + timedelta(minutes=cashout_delay_mins)
-                    lat, lon = self._get_hotspot_location()
+                    lat, lon = self._get_hotspot_location(curr_mule)
                     
                     cashouts.append({
                         'cashout_id': cashout_id,
@@ -205,6 +210,24 @@ class SyntheticDataGenerator:
                     
                     active_funds.append((next_mule, split_amount, hop_time, curr_layer + 1))
         
+        # Inject Benign (Class 0) Normal Traffic so GNN has negative samples
+        print("Injecting Benign Background Traffic...")
+        benign_accounts = [fake.sha256()[:16] for _ in range(3000)]
+        base_time = datetime(2023, 1, 1)
+        for _ in range(15000):
+            src = random.choice(benign_accounts)
+            dst = random.choice(benign_accounts)
+            if src != dst:
+                transactions.append({
+                    'txn_utr': str(fake.random_number(digits=12, fix_len=True)),
+                    'source_account': src,
+                    'beneficiary_account': dst,
+                    'amount': round(np.random.uniform(500, 25000), 2),
+                    'timestamp': base_time + timedelta(days=np.random.randint(0, 365), hours=np.random.randint(0, 24)),
+                    'layer_depth': 0, # Normal transactions don't have deep mule layering
+                    'channel': np.random.choice(["UPI", "IMPS", "NEFT"])
+                })
+                
         self.transactions_df = pd.DataFrame(transactions)
         self.cashouts_df = pd.DataFrame(cashouts)
         

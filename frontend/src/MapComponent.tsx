@@ -2,16 +2,18 @@ import React, { useMemo, useEffect, useRef, useState } from 'react';
 import Map, { Source, Layer, Marker, Popup } from 'react-map-gl/maplibre';
 import type { MapRef } from 'react-map-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { PredictionResult, Hotspot } from './App';
+import { Shield } from 'lucide-react';
+import type { PredictionResult, Alert as Hotspot } from './Dashboard';
 
 interface MapComponentProps {
   heatmapData: any;
   predictionResult: PredictionResult | null;
+  jeopardyGrid?: any;
+  initialViewState?: any;
+  user?: any;
 }
 
-const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY;
-
-const MapComponent: React.FC<MapComponentProps> = ({ heatmapData, predictionResult }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ heatmapData, predictionResult, jeopardyGrid, initialViewState, user }) => {
   const mapRef = useRef<MapRef>(null);
   const [selectedHotspot, setSelectedHotspot] = useState<Hotspot | null>(null);
 
@@ -66,17 +68,39 @@ const MapComponent: React.FC<MapComponentProps> = ({ heatmapData, predictionResu
   return (
     <Map
       ref={mapRef}
-      initialViewState={{
+      initialViewState={initialViewState || {
         longitude: 78.9629,
         latitude: 20.5937,
         zoom: 4
       }}
-      mapStyle={`https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`}
+      mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
       style={{ width: '100%', height: '100%' }}
     >
       {heatmapData && (
         <Source type="geojson" data={heatmapData}>
           <Layer {...heatmapLayerStyle} />
+        </Source>
+      )}
+
+      {/* Render Rossmo's Triangulation Grid */}
+      {jeopardyGrid && (
+        <Source type="geojson" data={jeopardyGrid}>
+          <Layer 
+            id="jeopardy-grid"
+            type="fill"
+            paint={{
+              'fill-color': [
+                'interpolate',
+                ['linear'],
+                ['get', 'jeopardy_score'],
+                0.2, 'rgba(255, 255, 0, 0.3)',
+                0.5, 'rgba(255, 165, 0, 0.6)',
+                0.8, 'rgba(255, 0, 0, 0.8)',
+                1.0, 'rgba(139, 0, 0, 0.9)'
+              ],
+              'fill-outline-color': 'rgba(255,255,255,0.1)'
+            }}
+          />
         </Source>
       )}
 
@@ -104,12 +128,35 @@ const MapComponent: React.FC<MapComponentProps> = ({ heatmapData, predictionResu
         </Marker>
       ))}
 
+      {/* Render Dummy Police Stations for Admins */}
+      {user?.role === 'admin' && [
+        { id: 1, name: 'Jamtara Cyber Cell', lat: 23.97, lng: 86.8 },
+        { id: 2, name: 'Nuh Cyber Cell', lat: 28.1, lng: 77.0 }
+      ].map((station) => (
+        <Marker 
+          key={`ps-${station.id}`} 
+          longitude={station.lng} 
+          latitude={station.lat}
+          anchor="bottom"
+        >
+          <div className="relative group cursor-pointer flex flex-col items-center">
+            <div className="bg-blue-600 p-1.5 rounded-lg border-2 border-white shadow-xl relative z-10 flex items-center justify-center">
+              <Shield size={16} className="text-white" />
+            </div>
+            <div className="absolute top-9 whitespace-nowrap bg-slate-900 text-white text-[10px] font-bold tracking-wider px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none border border-slate-700">
+              {station.name}
+            </div>
+          </div>
+        </Marker>
+      ))}
+
+
       {selectedHotspot && (
         <Popup
           longitude={selectedHotspot.longitude}
           latitude={selectedHotspot.latitude}
           onClose={() => setSelectedHotspot(null)}
-          closeOnClick={false}
+          closeOnClick={true}
           className="rounded-lg shadow-xl"
         >
           <div className="p-1">
@@ -121,6 +168,14 @@ const MapComponent: React.FC<MapComponentProps> = ({ heatmapData, predictionResu
                   ₹{selectedHotspot.expected_cashout_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </span>
               </div>
+              {selectedHotspot.expected_cashout_time && (
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-400">Est. Time of Arrival (ETA):</span>
+                  <span className="text-orange-400 font-bold animate-pulse">
+                    {new Date(selectedHotspot.expected_cashout_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* AI Explainability Panel */}
@@ -130,7 +185,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ heatmapData, predictionResu
                 
                 <div className="space-y-1.5 mb-2">
                   <div className="flex items-center text-xs">
-                    <div className="w-20 text-slate-400">Network:</div>
+                    <div className="w-32 text-slate-400 text-[10px]">Traced Funds:</div>
                     <div className="flex-1 bg-slate-700 h-1.5 rounded-full overflow-hidden">
                       <div className="bg-purple-500 h-full" style={{width: `${selectedHotspot.explanation.network_link_pct}%`}}></div>
                     </div>
@@ -138,7 +193,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ heatmapData, predictionResu
                   </div>
                   
                   <div className="flex items-center text-xs">
-                    <div className="w-20 text-slate-400">Spatial KDE:</div>
+                    <div className="w-32 text-slate-400 text-[10px]">Historical Density:</div>
                     <div className="flex-1 bg-slate-700 h-1.5 rounded-full overflow-hidden">
                       <div className="bg-blue-500 h-full" style={{width: `${selectedHotspot.explanation.baseline_spatial_pct}%`}}></div>
                     </div>
@@ -146,7 +201,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ heatmapData, predictionResu
                   </div>
                   
                   <div className="flex items-center text-xs">
-                    <div className="w-20 text-slate-400">Temporal:</div>
+                    <div className="w-32 text-slate-400 text-[10px]">Hawkes Urgency:</div>
                     <div className="flex-1 bg-slate-700 h-1.5 rounded-full overflow-hidden">
                       <div className="bg-orange-500 h-full" style={{width: `${selectedHotspot.explanation.recent_activity_pct}%`}}></div>
                     </div>

@@ -10,11 +10,28 @@ DDL_QUERIES = """
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- 2. Drop existing tables
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS police_stations CASCADE;
 DROP TABLE IF EXISTS atm_cashouts CASCADE;
 DROP TABLE IF EXISTS cfcfrms_transactions CASCADE;
 DROP TABLE IF EXISTS ncrp_complaints CASCADE;
 
 -- 3. Recreate Tables
+CREATE TABLE police_stations (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL
+);
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    station_id INTEGER REFERENCES police_stations(id)
+);
+
 CREATE TABLE ncrp_complaints (
     ack_no VARCHAR(20) PRIMARY KEY,
     incident_timestamp TIMESTAMP NOT NULL,
@@ -22,7 +39,9 @@ CREATE TABLE ncrp_complaints (
     crime_category VARCHAR(50) NOT NULL,
     defrauded_amount NUMERIC(12, 2) NOT NULL,
     initial_beneficiary_upi VARCHAR(255) NOT NULL,
-    victim_state VARCHAR(50) NOT NULL
+    victim_state VARCHAR(50) NOT NULL,
+    aadhar_number VARCHAR(12),
+    phone_number VARCHAR(15)
 );
 
 CREATE TABLE cfcfrms_transactions (
@@ -94,6 +113,36 @@ def reset_db_with_postgis():
         # Create a blazing fast Spatial Index on the geometry column
         print("Building GiST Spatial Index...")
         cur.execute("CREATE INDEX idx_cashouts_location_gist ON atm_cashouts USING GIST (location);")
+        conn.commit()
+
+        # Insert Police Stations & Users
+        print("Seeding Users and Police Stations...")
+        import hashlib
+        
+        def hash_pwd(pwd):
+            return hashlib.sha256(pwd.encode()).hexdigest()
+            
+        admin_hash = hash_pwd("admin123")
+        jamtara_hash = hash_pwd("jamtara123")
+        nuh_hash = hash_pwd("nuh123")
+        
+        # Jamtara: approx 23.97, 86.8
+        # Nuh: approx 28.1, 77.0
+        cur.execute("""
+            INSERT INTO police_stations (name, latitude, longitude) VALUES 
+            ('Jamtara Cyber Cell', 23.97, 86.8),
+            ('Nuh Cyber Cell', 28.1, 77.0)
+            RETURNING id;
+        """)
+        station_ids = cur.fetchall()
+        jamtara_id, nuh_id = station_ids[0][0], station_ids[1][0]
+        
+        cur.execute(f"""
+            INSERT INTO users (username, password_hash, role, station_id) VALUES 
+            ('admin', '{admin_hash}', 'admin', NULL),
+            ('jamtara_officer', '{jamtara_hash}', 'officer', {jamtara_id}),
+            ('nuh_officer', '{nuh_hash}', 'officer', {nuh_id})
+        """)
         conn.commit()
 
         cur.close()
