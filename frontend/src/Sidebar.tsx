@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, MapPin, Activity, ShieldAlert, Target, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, MapPin, Activity, ShieldAlert, Target, ArrowLeft, FileText, X, Printer, BellRing } from 'lucide-react';
 import type { Alert, PredictionResult } from './App';
 
 interface SidebarProps {
@@ -12,6 +12,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ activeAlerts, predictionResult, onTriangulate, isTriangulating, onClearPrediction }) => {
   const [filterMode, setFilterMode] = useState<'all' | 'critical'>('all');
+  const [showDispatch, setShowDispatch] = useState(false);
 
   // Compute filtered alerts dynamically on render (no strict state sync needed)
   const displayAlerts = activeAlerts
@@ -72,14 +73,23 @@ const Sidebar: React.FC<SidebarProps> = ({ activeAlerts, predictionResult, onTri
                 </div>
               </div>
               
-              <button 
-                onClick={onTriangulate}
-                disabled={isTriangulating}
-                className="w-full bg-gradient-to-r from-red-900 to-rose-700 hover:from-red-800 hover:to-rose-600 text-white text-xs font-bold tracking-widest py-3 px-4 rounded-lg border border-red-500/30 shadow-[0_0_15px_rgba(225,29,72,0.2)] hover:shadow-[0_0_20px_rgba(225,29,72,0.4)] transition-all disabled:opacity-50 flex items-center justify-center uppercase"
-              >
-                <Target size={16} className="mr-2" />
-                {isTriangulating ? 'PROFILING GEOGRAPHY...' : 'TRIANGULATE HIDEOUT'}
-              </button>
+              <div className="space-y-3">
+                <button 
+                  onClick={onTriangulate}
+                  disabled={isTriangulating}
+                  className="w-full bg-gradient-to-r from-red-900 to-rose-700 hover:from-red-800 hover:to-rose-600 text-white text-xs font-bold tracking-widest py-3 px-4 rounded-lg border border-red-500/30 shadow-[0_0_15px_rgba(225,29,72,0.2)] hover:shadow-[0_0_20px_rgba(225,29,72,0.4)] transition-all disabled:opacity-50 flex items-center justify-center uppercase"
+                >
+                  <Target size={16} className="mr-2" />
+                  {isTriangulating ? 'PROFILING GEOGRAPHY...' : 'TRIANGULATE HIDEOUT'}
+                </button>
+                <button 
+                  onClick={() => setShowDispatch(true)}
+                  className="w-full bg-gradient-to-r from-blue-900 to-indigo-700 hover:from-blue-800 hover:to-indigo-600 text-white text-xs font-bold tracking-widest py-3 px-4 rounded-lg border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.2)] hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] transition-all flex items-center justify-center uppercase"
+                >
+                  <FileText size={16} className="mr-2" />
+                  CREATE OPERATIONAL BRIEF
+                </button>
+              </div>
             </div>
 
             {predictionResult.flagged_nodes && predictionResult.flagged_nodes.length > 0 && (
@@ -205,6 +215,80 @@ const Sidebar: React.FC<SidebarProps> = ({ activeAlerts, predictionResult, onTri
           </div>
         )}
       </div>
+
+      {/* Actionable Alert / Dispatch Modal */}
+      {showDispatch && predictionResult && predictionResult.predicted_hotspots.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-xl shadow-[0_0_50px_rgba(59,130,246,0.15)] overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="bg-slate-950 p-4 border-b border-slate-800 flex justify-between items-center">
+              <div className="flex items-center">
+                <BellRing className="text-red-500 mr-3 animate-pulse" size={20} />
+                <h2 className="text-red-500 font-black tracking-widest text-lg">OPERATIONAL DISPATCH DIRECTIVE</h2>
+              </div>
+              <div className="flex space-x-2">
+                <button className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors" title="Print Brief">
+                  <Printer size={16} />
+                </button>
+                <button onClick={() => setShowDispatch(false)} className="p-2 bg-slate-800 hover:bg-red-900/50 text-slate-300 hover:text-red-400 rounded transition-colors" title="Close">
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            
+            {/* Body */}
+            <div className="p-6 overflow-y-auto custom-scrollbar font-mono text-sm space-y-6 flex-1">
+              {/* Threat Summary */}
+              <div className="bg-red-950/20 border border-red-900/50 p-4 rounded-lg">
+                <div className="text-red-500 font-bold mb-2 tracking-widest text-xs">🔴 HIGH PRIORITY CASH-OUT ALERT</div>
+                <div className="grid grid-cols-2 gap-y-5 text-slate-300 mt-4">
+                  <div>
+                    <span className="text-slate-500 text-xs">Primary Target Terminal:</span><br/>
+                    <span className="font-bold text-lg text-white">{predictionResult.predicted_hotspots[0].terminal_id}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs">Risk Confidence:</span><br/>
+                    <span className="font-bold text-lg text-rose-400">{(predictionResult.predicted_hotspots[0].risk_score * 100).toFixed(1)}%</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs">Predicted Window (ETA):</span><br/>
+                    <span className="font-bold text-orange-400">
+                      {predictionResult.predicted_hotspots[0].expected_cashout_time ? new Date(predictionResult.predicted_hotspots[0].expected_cashout_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'IMMINENT'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-xs">Estimated Exposure:</span><br/>
+                    <span className="font-bold text-emerald-400">₹{predictionResult.predicted_hotspots[0].expected_cashout_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Linkages */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-800/40 p-4 rounded-lg border border-slate-700/50">
+                  <div className="text-slate-500 text-xs mb-2">Linked Suspicious Accounts</div>
+                  <div className="text-2xl font-black text-blue-400">{predictionResult.flagged_nodes?.length || 0}</div>
+                </div>
+                <div className="bg-slate-800/40 p-4 rounded-lg border border-slate-700/50">
+                  <div className="text-slate-500 text-xs mb-2">Trigger Complaint ID</div>
+                  <div className="text-xl font-bold text-slate-200">{predictionResult.complaint_details.ack_no}</div>
+                </div>
+              </div>
+
+              {/* Recommended Actions */}
+              <div>
+                <div className="text-blue-400 font-bold mb-3 tracking-widest text-xs border-b border-slate-800 pb-2">RECOMMENDED ACTIONS</div>
+                <ul className="space-y-3 text-slate-300 list-none mt-4">
+                  <li className="flex items-start"><span className="text-blue-500 mr-2 mt-0.5">▶</span> <span>Alert local LEA patrol near coordinates <span className="text-white font-bold">[{predictionResult.predicted_hotspots[0].latitude.toFixed(4)}, {predictionResult.predicted_hotspots[0].longitude.toFixed(4)}]</span></span></li>
+                  <li className="flex items-start"><span className="text-blue-500 mr-2 mt-0.5">▶</span> <span>Notify concerned bank nodal officer to freeze terminal <span className="text-white font-bold">{predictionResult.predicted_hotspots[0].terminal_id}</span></span></li>
+                  <li className="flex items-start"><span className="text-blue-500 mr-2 mt-0.5">▶</span> <span>Issue proactive freeze on <span className="text-white font-bold">{predictionResult.flagged_nodes?.length || 0}</span> flagged mule accounts in trace chain</span></li>
+                  <li className="flex items-start"><span className="text-blue-500 mr-2 mt-0.5">▶</span> Assign on-ground investigator for potential intercept</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };
