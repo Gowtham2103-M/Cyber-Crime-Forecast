@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import MapComponent from './MapComponent';
 import Sidebar from './Sidebar';
-import { Search, Target } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 export interface Alert {
   terminal_id: string;
